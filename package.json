@@ -10,6 +10,8 @@
     "seed": "node --env-file-if-exists=.env --import tsx src/seed.ts"
   },
   "dependencies": {
+    "@fastify/swagger": "9.9.2",
+    "@fastify/swagger-ui": "6.1.2",
     "fastify": "5.6.1",
     "pg": "8.16.3"
   },

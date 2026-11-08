@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import type { PoolClient } from 'pg';
+import { caseParamsSchema, errorSchema } from './cases.js';
 import { withTenant } from './tenant.js';
 
 // A parsed inbound email, as the mail pipeline hands it over.
@@ -32,10 +33,27 @@ const inboundEmailSchema = {
   },
 } as const;
 
-const caseParamsSchema = {
+const ingestResultSchema = {
   type: 'object',
-  required: ['id'],
-  properties: { id: { type: 'string', format: 'uuid' } },
+  properties: {
+    email_id: { type: 'string', format: 'uuid' },
+    case_id: { type: 'string', format: 'uuid' },
+    created_case: { type: 'boolean' },
+    duplicate: { type: 'boolean' },
+  },
+} as const;
+
+const emailSchema = {
+  type: 'object',
+  properties: {
+    id: { type: 'string', format: 'uuid' },
+    message_id: { type: 'string' },
+    in_reply_to: { type: ['string', 'null'] },
+    from_address: { type: 'string' },
+    subject: { type: 'string' },
+    body: { type: 'string' },
+    received_at: { type: 'string', format: 'date-time' },
+  },
 } as const;
 
 const NO_SUBJECT = '(no subject)';
@@ -88,13 +106,27 @@ const normalize = (email: InboundEmail): InboundEmail => ({
 
 export const emailRoutes: FastifyPluginAsync = async (app) => {
   // 201 when the email was stored, 200 when it had been stored before (so a retrying sender can treat both as done).
-  app.post<{ Body: InboundEmail }>('/emails', { schema: { body: inboundEmailSchema } }, async (request, reply) => {
+  app.post<{ Body: InboundEmail }>('/emails', {
+    schema: {
+      tags: ['emails'],
+      summary: 'Ingests a parsed email into the case of its thread, or a new case',
+      body: inboundEmailSchema,
+      response: { 200: ingestResultSchema, 201: ingestResultSchema },
+    },
+  }, async (request, reply) => {
     const email = normalize(request.body);
     const result = await withTenant(request.tenantId, (db) => ingestEmail(db, request.tenantId, email));
     return reply.code(result.duplicate ? 200 : 201).send(result);
   });
 
-  app.get<{ Params: { id: string } }>('/cases/:id/emails', { schema: { params: caseParamsSchema } }, async (request, reply) => {
+  app.get<{ Params: { id: string } }>('/cases/:id/emails', {
+    schema: {
+      tags: ['emails'],
+      summary: 'The emails of a case, oldest first',
+      params: caseParamsSchema,
+      response: { 200: { type: 'array', items: emailSchema }, 404: errorSchema },
+    },
+  }, async (request, reply) => {
     const emails = await withTenant(request.tenantId, async (db) => {
       const found = await db.query('SELECT 1 FROM cases WHERE id = $1 AND tenant_id = $2', [request.params.id, request.tenantId]);
       if (found.rowCount === 0) return undefined;

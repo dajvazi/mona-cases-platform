@@ -149,6 +149,11 @@ describe('POST /emails', () => {
     const response = await app.inject({ method: 'POST', url: '/emails', payload: email() });
     expect(response.statusCode).toBe(401);
   });
+
+  it('checks the tenant before validating the body', async () => {
+    const response = await app.inject({ method: 'POST', url: '/emails', payload: { subject: 'no tenant, no fields' } });
+    expect(response.statusCode).toBe(401);
+  });
 });
 
 describe('email ingestion keeps tenants apart', () => {

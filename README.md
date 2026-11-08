@@ -11,9 +11,9 @@ Needs Node 20.12 or newer and PostgreSQL 16+ (Docker or native).
 docker compose up -d      # PostgreSQL 16 on localhost:5432
 npm install
 npm run migrate           # as the admin role; also creates the cases_app role the API connects as
-npm test                  # 27 tests: isolation and email ingestion
-npm run seed              # two demo tenants with fixed ids, for requests.http
-npm run dev               # the API on http://localhost:3000
+npm test                  # 31 tests: isolation, email ingestion, API docs
+npm run seed              # two demo tenants with fixed ids, for Swagger UI and requests.http
+npm run dev               # the API on http://localhost:3000, Swagger UI on http://localhost:3000/docs
 ```
 
 The defaults in `src/db.ts` match `docker-compose.yml`. For another database, copy `.env.example` to `.env` (read by
@@ -24,7 +24,10 @@ The defaults in `src/db.ts` match `docker-compose.yml`. For another database, co
 | `DATABASE_URL` | the API | `postgres://cases_app:cases_app@localhost:5432/cases` |
 | `ADMIN_DATABASE_URL` | migrations, seed, test setup | `postgres://postgres:postgres@localhost:5432/cases` |
 
-`requests.http` has every endpoint ready to send (REST Client extension).
+To try the API by hand, open **http://localhost:3000/docs**, click **Authorize** and enter a tenant id from
+`npm run seed` (`aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa` or `bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb`). Every request sent
+from the page then carries it as `x-tenant-id`. `requests.http` has the same requests as a script, for the REST Client
+extension.
 
 ## API
 
@@ -81,9 +84,19 @@ The handover note says tenant isolation is done and tested. It wasn't. Before ch
   tenant's message, or a reply that arrives before its parent), a new case opens. Message ids are trimmed, because
   stray whitespace from a parser would break both threading and deduplication. An empty subject becomes
   `(no subject)`.
-- **Validation with Fastify JSON schemas** on the new routes: required fields, `from` must be an email address,
-  header values at most 998 characters (RFC 5322), and the body capped by Fastify's 1 MiB `bodyLimit`. I left the
-  existing routes' hand-written checks as they were, to keep the change focused.
+- **Fastify JSON schemas on every route.** One schema does three jobs: it validates the request (required fields,
+  email addresses, ids that are UUIDs, header values at most 998 characters per RFC 5322, the body capped by the
+  1 MiB `bodyLimit`), it filters the response to the listed fields, and it generates the OpenAPI document behind
+  Swagger UI. The hand-written checks on the case routes are gone. One visible change: a malformed case id now gets
+  `400` instead of `404`.
+- **Code layout.** `app.ts` only assembles the app. Case routes are in `cases.ts`, email routes and ingestion in
+  `emails.ts`, Swagger in `docs.ts`. The tenant check is an `onRequest` hook inside an encapsulated plugin holding all
+  tenant-scoped routes. Swagger UI sits outside that plugin, so it needs no tenant, without exempting any path by URL
+  (a common way such checks get bypassed). `onRequest` instead of the original `preHandler`: with schemas in place, a
+  `preHandler` check would run after validation, and a request without a tenant would get a `400` that describes the
+  API.
+- **API docs are on in `npm run dev`** (`buildApp({ docs: true })`). In production I'd keep them off or behind the
+  gateway's authentication.
 
 ## Tenant isolation: how it works and how it could fail
 
@@ -116,7 +129,9 @@ How it could fail:
   RLS coverage check).
 - `test/emails.test.ts`: new case, replies and replies to replies, unknown parent, duplicates, concurrent duplicates,
   whitespace in ids, empty subject, validation, and isolation (replying to another tenant's `message_id`, the same
-  `message_id` under two tenants, reading another tenant's thread, a forged cross-tenant attach in SQL).
+  `message_id` under two tenants, reading another tenant's thread, a forged cross-tenant attach in SQL), and that the
+  tenant is checked before the body is validated.
+- `test/docs.test.ts`: the OpenAPI document and Swagger UI are served without a tenant, and the API still requires one.
 
 To check that the tests actually catch the bugs, I reintroduced each one and ran the suite. Connecting as superuser
 fails 5 tests, a session-wide `set_config` fails 2, and removing the advisory lock fails the concurrency test. The
