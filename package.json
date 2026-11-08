@@ -3,9 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx src/server.ts",
-    "migrate": "tsx src/migrate.ts",
-    "test": "vitest run"
+    "dev": "node --env-file-if-exists=.env --import tsx src/server.ts",
+    "migrate": "node --env-file-if-exists=.env --import tsx src/migrate.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "fastify": "5.6.1",

@@ -1,5 +1,5 @@
 import { buildApp } from './app.js';
 
-const app = buildApp();
+const app = buildApp({ logger: true });
 await app.listen({ port: Number(process.env.PORT ?? 3000), host: '0.0.0.0' });
 console.log(`listening on ${process.env.PORT ?? 3000}`);

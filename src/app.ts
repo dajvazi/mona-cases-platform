@@ -9,8 +9,10 @@ declare module 'fastify' {
   }
 }
 
-export const buildApp = () => {
-  const app = Fastify({ logger: false });
+// Tenant isolation has two independent layers: row-level security in the database, and an explicit tenant filter in
+// every query here. Either one alone keeps tenants apart, so one mistake isn't enough to leak data.
+export const buildApp = ({ logger = false }: { logger?: boolean } = {}) => {
+  const app = Fastify({ logger });
 
   // Authentication is out of scope here: the gateway in front of this service sets x-tenant-id after the login.
   app.decorateRequest('tenantId', '');
@@ -18,6 +20,16 @@ export const buildApp = () => {
     const tenantId = String(request.headers['x-tenant-id'] ?? '');
     if (!UUID.test(tenantId)) return reply.code(401).send({ error: 'missing or invalid x-tenant-id' });
     request.tenantId = tenantId;
+  });
+
+  // Unexpected errors are logged in full but reach the client without database details.
+  app.setErrorHandler((error, request, reply) => {
+    const statusCode = error.statusCode ?? 500;
+    if (statusCode >= 500) {
+      request.log.error(error);
+      return reply.code(500).send({ error: 'internal server error' });
+    }
+    return reply.code(statusCode).send({ error: error.message });
   });
 
   app.get('/cases', async (request) =>
@@ -30,7 +42,7 @@ export const buildApp = () => {
   app.get<{ Params: { id: string } }>('/cases/:id', async (request, reply) => {
     if (!UUID.test(request.params.id)) return reply.code(404).send({ error: 'not found' });
     const found = await withTenant(request.tenantId, async (db) => {
-      const { rows } = await db.query('SELECT * FROM cases WHERE id = $1', [request.params.id]);
+      const { rows } = await db.query('SELECT * FROM cases WHERE id = $1 AND tenant_id = $2', [request.params.id, request.tenantId]);
       return rows[0];
     });
     return found ?? reply.code(404).send({ error: 'not found' });
@@ -41,8 +53,8 @@ export const buildApp = () => {
     if (!subject || !email) return reply.code(400).send({ error: 'subject and requester_email are required' });
     const created = await withTenant(request.tenantId, async (db) => {
       const { rows } = await db.query(
-        `INSERT INTO cases (tenant_id, subject, requester_email) VALUES (current_setting('app.tenant_id')::uuid, $1, $2) RETURNING *`,
-        [subject, email],
+        'INSERT INTO cases (tenant_id, subject, requester_email) VALUES ($1, $2, $3) RETURNING *',
+        [request.tenantId, subject, email],
       );
       return rows[0];
     });
@@ -54,7 +66,10 @@ export const buildApp = () => {
     if (!UUID.test(request.params.id)) return reply.code(404).send({ error: 'not found' });
     if (status !== 'open' && status !== 'closed') return reply.code(400).send({ error: 'status must be open or closed' });
     const updated = await withTenant(request.tenantId, async (db) => {
-      const { rows } = await db.query('UPDATE cases SET status = $2 WHERE id = $1 RETURNING *', [request.params.id, status]);
+      const { rows } = await db.query(
+        'UPDATE cases SET status = $3 WHERE id = $1 AND tenant_id = $2 RETURNING *',
+        [request.params.id, request.tenantId, status],
+      );
       return rows[0];
     });
     return updated ?? reply.code(404).send({ error: 'not found' });
