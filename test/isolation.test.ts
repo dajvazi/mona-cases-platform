@@ -107,7 +107,7 @@ describe('tenant isolation in the database', () => {
        WHERE c.relkind IN ('r', 'p')
        ORDER BY c.relname`,
     );
-    expect(rows.map((row) => row.table)).toEqual(expect.arrayContaining(['cases']));
+    expect(rows.map((row) => row.table)).toEqual(expect.arrayContaining(['cases', 'emails']));
     for (const row of rows) expect(row, row.table).toMatchObject({ enabled: true, forced: true, policies: 1 });
   });
 });

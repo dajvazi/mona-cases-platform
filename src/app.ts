@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import { emailRoutes } from './emails.js';
 import { withTenant } from './tenant.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -74,6 +75,8 @@ export const buildApp = ({ logger = false }: { logger?: boolean } = {}) => {
     });
     return updated ?? reply.code(404).send({ error: 'not found' });
   });
+
+  app.register(emailRoutes);
 
   return app;
 };
