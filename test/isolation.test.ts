@@ -48,6 +48,18 @@ describe('tenant isolation', () => {
     expect(listB).toHaveLength(1);
   });
 
+  it('does not let a tenant read another tenant\x27s case by id', async () => {
+    const caseOfA = (await app.inject({ method: 'POST', url: '/cases', headers: as(tenantA), payload: { subject: 'Boiler', requester_email: 'a@example.com' } })).json();
+    const response = await app.inject({ method: 'GET', url: `/cases/${caseOfA.id}`, headers: as(tenantB) });
+    expect(response.statusCode).toBe(404);
+  });
+
+  it('does not let a tenant change another tenant\x27s case', async () => {
+    const caseOfA = (await app.inject({ method: 'POST', url: '/cases', headers: as(tenantA), payload: { subject: 'Roof', requester_email: 'a@example.com' } })).json();
+    const response = await app.inject({ method: 'PATCH', url: `/cases/${caseOfA.id}/status`, headers: as(tenantB), payload: { status: 'closed' } });
+    expect(response.statusCode).toBe(404);
+  });
+
   it('rejects requests without a tenant', async () => {
     const response = await app.inject({ method: 'GET', url: '/cases' });
     expect(response.statusCode).toBe(401);
