@@ -1,0 +1,121 @@
+# Manual requests for the cases API (VS Code / Cursor "REST Client" extension: "Send Request" above each one).
+# Setup: npm run migrate && npm run seed && npm run dev
+# The tenant ids come from `npm run seed`; `npm test` empties the tables, so seed again after running the tests.
+# Send the requests in order: later ones reuse ids from earlier responses (@name).
+
+@baseUrl = http://localhost:3000
+@tenantA = aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+@tenantB = bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb
+
+#######################################################################
+# Email ingestion
+#######################################################################
+
+### 1. A new email for Tenant A opens a case (201, created_case: true)
+# @name firstEmail
+POST {{baseUrl}}/emails
+x-tenant-id: {{tenantA}}
+Content-Type: application/json
+
+{
+  "message_id": "<heating-1@mail.example.com>",
+  "in_reply_to": null,
+  "from": "resident@example.com",
+  "subject": "Heating is broken in flat 4B",
+  "body": "No heating since this morning."
+}
+
+### 2. A reply joins the same case (201, created_case: false, same case_id)
+POST {{baseUrl}}/emails
+x-tenant-id: {{tenantA}}
+Content-Type: application/json
+
+{
+  "message_id": "<heating-2@mail.example.com>",
+  "in_reply_to": "<heating-1@mail.example.com>",
+  "from": "resident@example.com",
+  "subject": "Re: Heating is broken in flat 4B",
+  "body": "Still cold."
+}
+
+### 3. The same email again is ignored (200, duplicate: true)
+POST {{baseUrl}}/emails
+x-tenant-id: {{tenantA}}
+Content-Type: application/json
+
+{
+  "message_id": "<heating-2@mail.example.com>",
+  "in_reply_to": "<heating-1@mail.example.com>",
+  "from": "resident@example.com",
+  "subject": "Re: Heating is broken in flat 4B",
+  "body": "Still cold."
+}
+
+### 4. The thread of the case: both emails, oldest first
+GET {{baseUrl}}/cases/{{firstEmail.response.body.case_id}}/emails
+x-tenant-id: {{tenantA}}
+
+### 5. ISOLATION: Tenant B replies to Tenant A's message_id -> B gets its own new case (created_case: true)
+POST {{baseUrl}}/emails
+x-tenant-id: {{tenantB}}
+Content-Type: application/json
+
+{
+  "message_id": "<forged-reply@mail.example.com>",
+  "in_reply_to": "<heating-1@mail.example.com>",
+  "from": "intruder@example.com",
+  "subject": "Re: Heating is broken in flat 4B",
+  "body": "Trying to join someone else's thread."
+}
+
+### 6. ISOLATION: Tenant B reads the thread of Tenant A's case (404)
+GET {{baseUrl}}/cases/{{firstEmail.response.body.case_id}}/emails
+x-tenant-id: {{tenantB}}
+
+### 7. Invalid email: missing message_id, bad from (400)
+POST {{baseUrl}}/emails
+x-tenant-id: {{tenantA}}
+Content-Type: application/json
+
+{
+  "from": "not an address",
+  "subject": "x",
+  "body": "x"
+}
+
+#######################################################################
+# Cases
+#######################################################################
+
+### 8. Tenant A lists its cases
+GET {{baseUrl}}/cases
+x-tenant-id: {{tenantA}}
+
+### 9. Tenant B lists its cases (only the one from request 5)
+GET {{baseUrl}}/cases
+x-tenant-id: {{tenantB}}
+
+### 10. ISOLATION: Tenant B reads Tenant A's case (404)
+GET {{baseUrl}}/cases/{{firstEmail.response.body.case_id}}
+x-tenant-id: {{tenantB}}
+
+### 11. ISOLATION: Tenant B closes Tenant A's case (404)
+PATCH {{baseUrl}}/cases/{{firstEmail.response.body.case_id}}/status
+x-tenant-id: {{tenantB}}
+Content-Type: application/json
+
+{
+  "status": "closed"
+}
+
+### 12. Tenant A closes its own case (200)
+PATCH {{baseUrl}}/cases/{{firstEmail.response.body.case_id}}/status
+x-tenant-id: {{tenantA}}
+Content-Type: application/json
+
+{
+  "status": "closed"
+}
+
+### 13. No tenant header (401)
+GET {{baseUrl}}/cases
