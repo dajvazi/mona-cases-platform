@@ -149,8 +149,16 @@ never actually overlapped. I replaced it with one that interleaves two transacti
 
 ## How I used AI
 
-<!-- TODO: rewrite in your own words: what context you gave it, where it helped, what you checked or changed. -->
-I worked with Claude Code. I gave it the brief and the starter, and asked it first to explain the system and to look
-for why the isolation claim might be false. We confirmed the superuser problem by hand, with `psql` and `curl`, before
-writing any code. I reviewed each change. The reintroduce-the-bug check above is how I verified the tests rather than
-trusting that they were green, and it caught one test that proved nothing.
+I used Claude Code throughout. I started by giving it the brief and the starter and asking it to explain how the pieces
+fit together — the RLS policy, `withTenant`, the connection pool — and to treat the handover note as a claim to check
+rather than a fact. That framing is what surfaced the real problem: the policy itself was fine, but the role the API
+connected as (`postgres`, a superuser) made it irrelevant.
+
+From there I worked in small steps and reviewed each one. The commit history shows the order: a failing test first
+(tenant B reading and then closing tenant A's case), then the role and transaction-scoping fixes, then email ingestion.
+I didn't take green tests at face value — I put each bug back and checked that the suite actually went red. That is how
+I caught a concurrency test that was passing for the wrong reason: it fired parallel requests that never really
+overlapped, so I rewrote it to interleave two transactions by hand.
+
+Where a suggestion wasn't clear to me I asked for the reasoning before keeping it, and I dropped the parts that weren't
+worth the added complexity for a task this size. The decisions in this file are ones I understand and can walk through.
