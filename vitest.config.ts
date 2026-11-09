@@ -1,11 +1,9 @@
 import { defineConfig } from 'vitest/config';
 
-// Same optional .env as `npm run dev` and `npm run migrate`; CI sets the variables directly.
+// Optional .env
 try {
   process.loadEnvFile('.env');
-} catch {
-  // no .env: use the environment and the defaults in src/db.ts
-}
+} catch {}
 
-// The tests share one database, so test files run one after another.
+// One database, files run in sequence
 export default defineConfig({ test: { fileParallelism: false } });
