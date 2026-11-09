@@ -1,7 +1,6 @@
--- Inbound emails, each attached to the case of its thread.
+-- Emails
 
--- Target for the composite foreign key below. id alone is already unique; this lets an email reference a case
--- together with its tenant.
+-- Target for the composite foreign key
 ALTER TABLE cases ADD CONSTRAINT cases_id_tenant_key UNIQUE (id, tenant_id);
 
 CREATE TABLE emails (
@@ -14,11 +13,9 @@ CREATE TABLE emails (
   subject text NOT NULL,
   body text NOT NULL,
   received_at timestamptz NOT NULL DEFAULT now(),
-  -- Each message is stored once per tenant, which makes ingestion idempotent. The same message_id under two tenants
-  -- is two separate emails. The index behind this constraint also serves the in_reply_to lookup.
+  -- Idempotency
   CONSTRAINT emails_message_id_key UNIQUE (tenant_id, message_id),
-  -- An email can only belong to a case of its own tenant. This holds even if application code got it wrong:
-  -- foreign key checks don't go through row-level security.
+  -- Same-tenant case only
   CONSTRAINT emails_case_fkey FOREIGN KEY (case_id, tenant_id) REFERENCES cases (id, tenant_id)
 );
 
@@ -31,5 +28,5 @@ CREATE POLICY tenant_isolation ON emails
   USING (tenant_id = public.app_current_tenant())
   WITH CHECK (tenant_id = public.app_current_tenant());
 
--- Emails are append-only for the API.
+-- Grants
 GRANT SELECT, INSERT ON emails TO cases_app;
