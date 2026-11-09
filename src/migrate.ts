@@ -3,8 +3,7 @@ import { pathToFileURL } from 'node:url';
 import pg from 'pg';
 import { ADMIN_DATABASE_URL } from './db.js';
 
-// Applies every migration in migrations/ that hasn't been applied yet, in name order. Runs as the admin role: the
-// migrations create tables, policies and the role the API connects as.
+// Apply pending migrations (admin role)
 export const migrate = async (admin: pg.Pool) => {
   await admin.query('CREATE TABLE IF NOT EXISTS schema_migrations (name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())');
   const done = new Set((await admin.query('SELECT name FROM schema_migrations')).rows.map((row) => row.name));

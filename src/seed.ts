@@ -1,8 +1,7 @@
 import pg from 'pg';
 import { ADMIN_DATABASE_URL } from './db.js';
 
-// Two tenants with fixed ids for trying the API by hand (requests.http). `npm test` empties the tables, so run this
-// again after the tests.
+// Demo tenants
 export const DEMO_TENANTS = {
   'Tenant A': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
   'Tenant B': 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
