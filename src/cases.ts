@@ -25,7 +25,7 @@ const notFound = { error: 'not found' };
 
 export const caseRoutes: FastifyPluginAsync = async (app) => {
   app.get('/cases', {
-    schema: { tags: ['cases'], summary: "The tenant's cases, newest first", response: { 200: { type: 'array', items: caseSchema } } },
+    schema: { response: { 200: { type: 'array', items: caseSchema } } },
   }, async (request) =>
     withTenant(request.tenantId, async (db) => {
       const { rows } = await db.query('SELECT * FROM cases WHERE tenant_id = $1 ORDER BY created_at DESC', [request.tenantId]);
@@ -34,7 +34,7 @@ export const caseRoutes: FastifyPluginAsync = async (app) => {
   );
 
   app.get<{ Params: { id: string } }>('/cases/:id', {
-    schema: { tags: ['cases'], summary: 'One case', params: caseParamsSchema, response: { 200: caseSchema, 404: errorSchema } },
+    schema: { params: caseParamsSchema, response: { 200: caseSchema, 404: errorSchema } },
   }, async (request, reply) => {
     const found = await withTenant(request.tenantId, async (db) => {
       const { rows } = await db.query('SELECT * FROM cases WHERE id = $1 AND tenant_id = $2', [request.params.id, request.tenantId]);
@@ -45,8 +45,6 @@ export const caseRoutes: FastifyPluginAsync = async (app) => {
 
   app.post<{ Body: { subject: string; requester_email: string } }>('/cases', {
     schema: {
-      tags: ['cases'],
-      summary: 'Opens a case',
       body: {
         type: 'object',
         required: ['subject', 'requester_email'],
@@ -71,8 +69,6 @@ export const caseRoutes: FastifyPluginAsync = async (app) => {
 
   app.patch<{ Params: { id: string }; Body: { status: 'open' | 'closed' } }>('/cases/:id/status', {
     schema: {
-      tags: ['cases'],
-      summary: 'Opens or closes a case',
       params: caseParamsSchema,
       body: {
         type: 'object',
