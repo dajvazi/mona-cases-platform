@@ -3,7 +3,7 @@ import type { PoolClient } from 'pg';
 import { caseParamsSchema, errorSchema } from './cases.js';
 import { withTenant } from './tenant.js';
 
-// A parsed inbound email, as the mail pipeline hands it over.
+// Parsed inbound email
 export interface InboundEmail {
   message_id: string;
   in_reply_to?: string | null;
@@ -19,7 +19,7 @@ export interface IngestResult {
   duplicate: boolean;
 }
 
-// 998 is the longest line RFC 5322 allows, so no valid header value is longer.
+// Max header length (RFC 5322)
 const inboundEmailSchema = {
   type: 'object',
   required: ['message_id', 'from', 'subject', 'body'],
@@ -29,7 +29,7 @@ const inboundEmailSchema = {
     in_reply_to: { type: ['string', 'null'], maxLength: 998 },
     from: { type: 'string', format: 'email', maxLength: 320 },
     subject: { type: 'string', maxLength: 998 },
-    body: { type: 'string' }, // capped by Fastify's bodyLimit (1 MiB by default)
+    body: { type: 'string' },
   },
 } as const;
 
@@ -74,18 +74,15 @@ const openCase = async (db: PoolClient, tenantId: string, email: InboundEmail) =
   return rows[0].id;
 };
 
-// Stores an email on the case of its thread, or on a new case when it doesn't reply to a known email. An email that
-// was already stored is not stored again. Has to run inside withTenant, so all of it is one transaction.
+// Ingestion (runs inside withTenant)
 export const ingestEmail = async (db: PoolClient, tenantId: string, email: InboundEmail): Promise<IngestResult> => {
-  // Mail pipelines retry, so the same message can arrive twice at the same moment. This lock makes concurrent
-  // deliveries of one message (per tenant) wait for each other until the first one commits, so the check below sees
-  // it. The unique constraint on (tenant_id, message_id) stays the hard guarantee.
+  // Serialize concurrent deliveries of the same message
   await db.query('SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))', [tenantId, email.message_id]);
 
   const existing = await findEmail(db, tenantId, email.message_id);
   if (existing) return { email_id: existing.id, case_id: existing.case_id, created_case: false, duplicate: true };
 
-  // The lookup is scoped to the tenant, so replying to another tenant's message_id opens a new case instead.
+  // Threading
   const parent = email.in_reply_to ? await findEmail(db, tenantId, email.in_reply_to) : undefined;
   const caseId = parent?.case_id ?? (await openCase(db, tenantId, email));
 
@@ -97,7 +94,7 @@ export const ingestEmail = async (db: PoolClient, tenantId: string, email: Inbou
   return { email_id: rows[0].id, case_id: caseId, created_case: !parent, duplicate: false };
 };
 
-// Message IDs are compared exactly, so stray whitespace from the parser would break threading and deduplication.
+// Trim message ids
 const normalize = (email: InboundEmail): InboundEmail => ({
   ...email,
   message_id: email.message_id.trim(),
@@ -105,11 +102,9 @@ const normalize = (email: InboundEmail): InboundEmail => ({
 });
 
 export const emailRoutes: FastifyPluginAsync = async (app) => {
-  // 201 when the email was stored, 200 when it had been stored before (so a retrying sender can treat both as done).
+  // 201 stored, 200 duplicate
   app.post<{ Body: InboundEmail }>('/emails', {
     schema: {
-      tags: ['emails'],
-      summary: 'Ingests a parsed email into the case of its thread, or a new case',
       body: inboundEmailSchema,
       response: { 200: ingestResultSchema, 201: ingestResultSchema },
     },
@@ -121,8 +116,6 @@ export const emailRoutes: FastifyPluginAsync = async (app) => {
 
   app.get<{ Params: { id: string } }>('/cases/:id/emails', {
     schema: {
-      tags: ['emails'],
-      summary: 'The emails of a case, oldest first',
       params: caseParamsSchema,
       response: { 200: { type: 'array', items: emailSchema }, 404: errorSchema },
     },
