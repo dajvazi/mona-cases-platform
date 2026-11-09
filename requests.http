@@ -1,7 +1,4 @@
-# Manual requests for the cases API (VS Code / Cursor "REST Client" extension: "Send Request" above each one).
-# Setup: npm run migrate && npm run seed && npm run dev
-# The tenant ids come from `npm run seed`; `npm test` empties the tables, so seed again after running the tests.
-# Send the requests in order: later ones reuse ids from earlier responses (@name).
+# Manual requests (REST Client). Run npm run seed first; send in order.
 
 @baseUrl = http://localhost:3000
 @tenantA = aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
