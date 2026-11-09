@@ -58,7 +58,7 @@ describe('tenant isolation through the API', () => {
   });
 });
 
-// These go around the API's own tenant filters, so they show that the database keeps tenants apart by itself.
+// Database level, without the API's filters
 describe('tenant isolation in the database', () => {
   it('shows a tenant only its own rows even when a query has no tenant filter', async () => {
     const tenants = await withTenant(tenantB, async (db) => (await db.query('SELECT DISTINCT tenant_id FROM cases')).rows);
@@ -82,7 +82,7 @@ describe('tenant isolation in the database', () => {
     const client = await pool.connect();
     try {
       const { rows } = await client.query(`SELECT pg_backend_pid() AS pid, (SELECT count(*)::int FROM cases) AS count`);
-      expect(rows[0].pid).toBe(usedPid); // the pool handed back the same connection
+      expect(rows[0].pid).toBe(usedPid);
       expect(rows[0].count).toBe(0);
     } finally {
       client.release();

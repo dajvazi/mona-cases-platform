@@ -2,8 +2,7 @@ import pg from 'pg';
 import { ADMIN_DATABASE_URL } from '../src/db.js';
 import { migrate } from '../src/migrate.js';
 
-// Test setup (migrating, truncating, creating tenants) needs the admin role; everything under test goes through the
-// API or the app's own pool, so it runs as cases_app with row-level security in force.
+// Test setup (admin role)
 export const admin = new pg.Pool({ connectionString: ADMIN_DATABASE_URL, max: 2 });
 
 export const resetDatabase = async () => {

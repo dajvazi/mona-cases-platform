@@ -22,7 +22,7 @@ afterAll(async () => {
 });
 
 let sequence = 0;
-// A unique message_id per call keeps tests independent of each other.
+// Unique message_id per call
 const email = (overrides: Partial<InboundEmail> = {}): InboundEmail => ({
   message_id: `<${++sequence}.${Date.now()}@mail.example.com>`,
   in_reply_to: null,
@@ -91,8 +91,7 @@ describe('POST /emails', () => {
     expect((await emailsOf(tenantA, first.case_id)).json()).toHaveLength(1);
   });
 
-  // Firing parallel requests doesn't reliably overlap them (that version of this test passed without the lock), so
-  // this one interleaves two transactions by hand: the second delivery starts while the first is still uncommitted.
+  // Interleave two transactions by hand
   it('makes a second delivery of the same message wait for the first and then report a duplicate', async () => {
     const message = email();
     const [first, second] = [await pool.connect(), await pool.connect()];
@@ -113,7 +112,7 @@ describe('POST /emails', () => {
       const { rows } = await admin.query(
         'SELECT count(*)::int AS count FROM cases c WHERE NOT EXISTS (SELECT FROM emails e WHERE e.case_id = c.id)',
       );
-      expect(rows[0].count).toBe(0); // the second delivery didn't leave an empty case behind
+      expect(rows[0].count).toBe(0);
     } finally {
       for (const client of [first, second]) {
         await client.query('ROLLBACK').catch(() => undefined);
